@@ -67,28 +67,36 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	return userID, nil
 }
 
-func GetBearerToken(headers http.Header) (string, error) {
-	authHeader := headers.Get("Authorization")
-	if authHeader == "" {
-		return "", errors.New("authorization header was not found")
-	}
-
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return "", fmt.Errorf("invalid Authorization header format")
-	}
-
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return "", fmt.Errorf("bearer token is missing")
-	}
-
-	return token, nil
-}
-
 func MakeRefreshToken() (string, error) {
 	randomData := make([]byte, 32)
 	_, _ = rand.Read(randomData)
 	refreshToken := hex.EncodeToString(randomData)
 	return refreshToken, nil
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	return GetAuthHeader(headers, "Bearer")
+}
+
+func GetAPIKey(headers http.Header) (string, error) {
+	return GetAuthHeader(headers, "ApiKey")
+}
+
+func GetAuthHeader(headers http.Header, authPrefix string) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("authorization header was not found")
+	}
+
+	if !strings.HasPrefix(authHeader, authPrefix+" ") {
+		return "", fmt.Errorf("invalid Authorization header format")
+	}
+
+	token := strings.TrimPrefix(authHeader, authPrefix+" ")
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", fmt.Errorf("token is missing")
+	}
+
+	return token, nil
 }

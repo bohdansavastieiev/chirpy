@@ -20,7 +20,8 @@ func main() {
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
 	secret := os.Getenv("SECRET")
-	if dbURL == "" || platform == "" || secret == "" {
+	polkaKey := os.Getenv("POLKA_KEY")
+	if dbURL == "" || platform == "" || secret == "" || polkaKey == "" {
 		log.Fatal("environment variables were not loaded successfully")
 	}
 
@@ -34,6 +35,7 @@ func main() {
 		dbQueries:      database.New(db),
 		secret:         secret,
 		expirationJWT:  3600 * time.Second,
+		polkaKey:       polkaKey,
 	}
 
 	const filepathRoot = "."
@@ -54,6 +56,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpHandler)
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirpHandler)
 	mux.HandleFunc("POST /api/chirps", apiCfg.createChirpHandler)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.markUserChirpyRedHandler)
 
 	srv := http.Server{
 		Addr:    ":" + port,

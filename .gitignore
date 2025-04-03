@@ -35,4 +35,4 @@ __debug_bin
 Thumbs.db
 
 # Additional
-#.env
+.env

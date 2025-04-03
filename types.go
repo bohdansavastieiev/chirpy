@@ -13,13 +13,15 @@ type apiConfig struct {
 	dbQueries      *database.Queries
 	secret         string
 	expirationJWT  time.Duration
+	polkaKey       string
 }
 
 type BaseUserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 type ChirpResponse struct {

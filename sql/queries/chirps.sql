@@ -11,12 +11,18 @@ RETURNING *;
 
 -- name: GetChirps :many
 SELECT * FROM chirps
-ORDER BY chirps.created_at;
+WHERE (author_id = $1 OR $1 IS NULL)
+ORDER BY created_at ${2};
 
 -- name: GetChirp :one
 SELECT * FROM chirps
 WHERE chirps.id = $1;
 
--- name: DeleteChirp :exec
+-- name: DeleteChirp :one
 DELETE FROM chirps
-WHERE chirps.id = $1;
+WHERE id = $1
+RETURNING id;
+
+-- name: GetChirpUserID :one
+SELECT user_id FROM chirps
+WHERE id = $1;

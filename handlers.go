@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"sort"
 	"strings"
 	"time"
 )
@@ -148,10 +149,11 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, http.StatusCreated, BaseUserResponse{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
 }
 
@@ -210,11 +212,56 @@ func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, http.StatusOK, BaseUserResponse{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
+}
+
+func (cfg *apiConfig) markUserChirpyRedHandler(w http.ResponseWriter, r *http.Request) {
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil || apiKey != cfg.polkaKey {
+		respondWithError(w, http.StatusUnauthorized, "You are not authorized to perform this action")
+		return
+	}
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			log.Printf("Error closing request body: %v", err)
+		}
+	}()
+
+	type requestBody struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+
+	var reqBody requestBody
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Request body is in invalid format")
+		return
+	}
+
+	w.Header().Set("Content-type", "application/json")
+	if reqBody.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	_, err = cfg.dbQueries.MakeUserChirpyRed(context.Background(), reqBody.Data.UserID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondWithError(w, http.StatusNotFound, "User with this ID doesn't exist")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
@@ -269,11 +316,34 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, _ *http.Request) {
-	chirps, err := cfg.dbQueries.GetChirps(context.Background())
+func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	sortOrder := strings.ToLower(r.URL.Query().Get("sort"))
+	if sortOrder != "asc" && sortOrder != "desc" && sortOrder != "" {
+		respondWithError(w, http.StatusBadRequest, "Invalid sort value")
+		return
+	}
+
+	var chirps []database.Chirp
+	var err error
+	authorIDString := r.URL.Query().Get("author_id")
+	if authorIDString == "" {
+		chirps, err = cfg.dbQueries.GetChirps(context.Background())
+	} else {
+		authorID, err := uuid.Parse(authorIDString)
+		if err != nil {
+			respondWithJSON(w, http.StatusOK, []ChirpResponse{})
+			return
+		}
+		chirps, err = cfg.dbQueries.GetChirpsByAuthor(context.Background(), authorID)
+	}
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		return
+	}
+
+	if sortOrder == "desc" {
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		})
 	}
 
 	var chirpsRes []ChirpResponse
@@ -335,7 +405,7 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	chirp, err := cfg.dbQueries.GetChirp(context.Background(), id)
+	chirpUserID, err := cfg.dbQueries.GetChirpUserID(context.Background(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			respondWithError(w, http.StatusNotFound, "Chirp with this ID doesn't exist")
@@ -344,12 +414,15 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
-	if userIDFromToken != chirp.UserID {
+	if chirpUserID != userIDFromToken {
+		log.Printf("Unauthorized attempt to delete chirp by user %s", userIDFromToken)
 		respondWithError(w, http.StatusForbidden, "You have no permissions to perform this action")
 		return
 	}
 
-	if err = cfg.dbQueries.DeleteChirp(context.Background(), chirp.ID); err != nil {
+	deletedChirpID, err := cfg.dbQueries.DeleteChirp(context.Background(), id)
+	if err != nil || deletedChirpID != id {
+		log.Printf("Unexpected error. DeletedChirpID: %v, error: %v", deletedChirpID, err)
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
@@ -412,10 +485,11 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJSON(w, http.StatusOK, LoginUserResponse{
 		BaseUserResponse: BaseUserResponse{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
+			ID:          user.ID,
+			CreatedAt:   user.CreatedAt,
+			UpdatedAt:   user.UpdatedAt,
+			Email:       user.Email,
+			IsChirpyRed: user.IsChirpyRed,
 		},
 		Token:        token,
 		RefreshToken: refreshTokenDB.Token,
