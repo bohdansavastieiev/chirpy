@@ -1,0 +1,38 @@
+# Binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.o
+*.a
+
+# Go modules and dependencies
+vendor/
+go.sum
+
+# GoLand project files
+.idea/
+*.iml
+
+# Go build cache and temp files
+/tmp/
+*.log
+*.swp
+*.swo
+__debug_bin
+
+# Coverage and profiling files
+*.cover
+*.prof
+*.pprof
+*.testoutput
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Additional
+.env
